@@ -17,6 +17,7 @@ from langchain_milvus import Milvus
 from rich.console import Console
 
 import sqlite3
+import os
 
 console = Console()
 
@@ -71,7 +72,7 @@ class RAGStore:
         """Closes sqlite connection"""
         self.conn.close()
 
-    def add_documents(self, file_path: str) -> None:
+    def add_documents(self, file_path: str, verbose: bool) -> None:
         """ Adds documents to our various databases.
 
         Args:
@@ -80,7 +81,7 @@ class RAGStore:
         file_hash: str = self.get_file_hash(file_path);
         if self.validate(file_path, file_hash):
 
-            splits_uuids = self.process_docs(Path(file_path), file_hash)
+            splits_uuids = self.process_docs(Path(file_path), file_hash, verbose)
 
             self.curr.execute(""" 
             INSERT INTO docs (id, filepath, file_hash, chunk_count, last_indexed) VALUES (?, ?, ?, ?, ?)
@@ -102,7 +103,7 @@ class RAGStore:
             return True  
         return row[0] != file_hash  
 
-    def add_documents_batch(self, file_paths: list[str]) -> None:
+    def add_documents_batch(self, file_paths: list[str], verbose: bool) -> None:
         """Batch process multiple documents efficiently"""
         documents_to_add = []
         ids_to_add = []
@@ -110,7 +111,7 @@ class RAGStore:
         for file_path in file_paths:
             file_hash = self.get_file_hash(file_path)
             if self.validate(file_path, file_hash):
-                splits_uuids = self.process_docs(Path(file_path), file_hash)
+                splits_uuids = self.process_docs(Path(file_path), file_hash, verbose)
                 self.curr.execute("SELECT filepath FROM docs WHERE filepath = (?)", (file_path,))
                 existing = self.curr.fetchall()
                 if existing:
@@ -131,8 +132,18 @@ class RAGStore:
         if documents_to_add:
             self.vector_store.add_documents(documents=documents_to_add, ids=ids_to_add)
             self.conn.commit() 
-            print("done this")
             self.close()   
+
+    def get_current_hashes(self, paths: list[str]) -> dict:
+        assert all([os.path.exists(path) for path in paths]), "Some of these are not real paths"
+        placeholder= '?' 
+        placeholders= ', '.join(placeholder for unused in paths)
+        query= 'SELECT filepath, file_hash FROM docs WHERE filepath IN(%s)' % placeholders
+        self.curr.execute(query, paths)
+        path_hash_dict = {path : hash for path, hash in self.curr.fetchall()}
+        self.close()
+        return path_hash_dict
+
 
 
     def get_file_hash(self, file_path) -> str:
@@ -140,7 +151,7 @@ class RAGStore:
         with open(file_path, 'rb') as f:
             return hashlib.md5(f.read()).hexdigest()
 
-    def process_docs(self, file_path: Path, file_hash: str) -> tuple[list[Document], list[str]]:
+    def process_docs(self, file_path: Path, file_hash: str, verbose: bool = False) -> tuple[list[Document], list[str]]:
         """Process code or text documents, using appropriate parser based on file type."""
 
         if file_path.suffix in CODE_LANGUAGES:
@@ -169,7 +180,8 @@ class RAGStore:
             raise ValueError(f"Unsupported file extension: {file_path.suffix}")
 
         all_splits = text_splitter.split_documents(docs)
-        console.print(f"\n[italic]Split {str(file_path)} into {len(all_splits)} sub_documents")
+        if verbose:
+            console.print(f"\n[italic]Split {str(file_path)} into {len(all_splits)} sub_documents")
         
         uuids = [str(uuid.uuid4()) for _ in range(len(all_splits))]
 

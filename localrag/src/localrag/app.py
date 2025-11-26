@@ -8,13 +8,12 @@ import shutil
 
 from pathlib import Path
 
-from rich.console import Console
-
 import re
 
 import uuid
 
-console = Console()
+from rich.console import Console
+console = Console() 
 
 app = typer.Typer()
 
@@ -24,6 +23,7 @@ def init():
     from localrag.rag.database.setup_db import DBManager
     from localrag.rag.document_processing import RAGStore
     from localrag.rag.rag import embeddings
+
     current_directory = Path(os.getcwd())
     try:
         with console.status("intializing..."):
@@ -75,7 +75,7 @@ def ls():
     table.add_column("last indexed")
 
     for row in result:
-        table.add_row(*list(map(str, row)))
+        table.add_row(*list[str](map(str, row)))
 
     rag.close()
 
@@ -148,7 +148,6 @@ def reset(hard: bool = False):
     Args:
         hard (bool): dictates whether the directory needs to be reinitialized.
     """
-
     try: 
         assert check_initialization, "This is not a localrag project! Please initialize this repo."
         rag_directory = find_rag_directory(os.getcwd())
@@ -163,10 +162,45 @@ def reset(hard: bool = False):
             console.print(f"[yellow]Deleted {i} files from staging area.")
     except Exception as e:
         raise e
-    
+
 
 @app.command()
-def commit():
+def diff():
+    """ Shows the difference between the most recent tracked version of a file and the files in the staging area.
+    
+    Notes:
+        Very rudimentary. Just shows that file hashes are different.
+    
+    """
+    from localrag.rag.document_processing import RAGStore
+    from localrag.rag.rag import embeddings
+    try:
+        assert check_initialization(), "This is not a localrag project! Please initialize this repo."
+        rag_path = find_rag_directory(os.getcwd())
+        rag = RAGStore(
+            vs_URI=rag_path + "/.rag/milvus.db", 
+            embeddings=embeddings, 
+            sql_URI=rag_path + "/.rag/database.db"
+        )
+        path = rag_path + "/.rag/staging"
+        files_to_process = [path + "/" + file for file in os.listdir(path=path)]
+
+        if not files_to_process:
+            console.print("Staging area clean.")
+            typer.Exit()
+
+        current_hashes = rag.get_current_hashes(files_to_process)
+        updated_hashes = [rag.get_file_hash(file) for file in files_to_process]
+        for file in files_to_process:
+            if current_hashes[file] != updated_hashes:
+                console.print(f"[bold] {file}: [/bold] [red]different")
+            else:
+                console.print(f"[bold] {file}: [/bold] [green]no changes")
+    except Exception as e:
+        raise e
+
+@app.command()
+def commit(verbose: bool = False):
     """ Adds files from staging area to vector database """
     from localrag.rag.document_processing import RAGStore
     from localrag.rag.rag import embeddings
@@ -181,9 +215,8 @@ def commit():
         )
         path = rag_path + "/.rag/staging"
         files_to_process = [path + "/" + file for file in os.listdir(path=path)]
-        print(files_to_process)
         
-        rag.add_documents_batch(files_to_process)
+        rag.add_documents_batch(files_to_process, verbose)
 
         for file in os.listdir(path=path):
             os.remove(path + "/" + file)
@@ -197,7 +230,7 @@ def ask():
     from localrag.rag.rag import invoke_agent
     from rich.markdown import Markdown
     from rich.padding import Padding
-    from rich.prompt import Prompt  
+    from rich.prompt import Prompt
 
     rag_path = find_rag_directory(os.getcwd())
     with open(rag_path + "/.rag/threads.txt", "r") as f:
@@ -210,7 +243,7 @@ def ask():
         if initial_message == "q" or initial_message == "Q":
             raise typer.Exit()
 
-        msg = Markdown(invoke_agent(initial_message, rag_path + "/.rag/milvus.db", rag_path + "/.rag/milvus.db", config))
+        msg = Markdown(invoke_agent(initial_message, rag_path + "/.rag/milvus.db", rag_path + "/.rag/database.db", config))
         console.print(Padding(msg, 1))
         
 

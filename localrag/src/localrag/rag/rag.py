@@ -10,6 +10,10 @@ from langchain.messages import SystemMessage, ToolMessage, HumanMessage, RemoveM
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from langchain_community.utilities import SQLDatabase
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+
+
 from langchain_tavily import TavilySearch
 
 import sqlite3
@@ -33,7 +37,6 @@ summarizer = ChatGoogleGenerativeAI(
     max_retries=2
 )
 
-
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
 tavily_search = TavilySearch(max_results=3)
@@ -49,6 +52,15 @@ def get_ragstore(relational_db_path: str, vector_db_path: str):
         doc_processor = RAGStore(vector_db_path, embeddings, relational_db_path)
         _ragstore_cache[relational_db_path] = doc_processor
     return _ragstore_cache[relational_db_path]
+
+_db = {}
+
+def get_db(relational_db_path: str):
+    if not relational_db_path in _db:
+        uri = f"sqlite:///{relational_db_path}"
+        db = SQLDatabase.from_uri(uri)
+        _db[relational_db_path] = db
+    return _db[relational_db_path]
 
 @tool(response_format="content_and_artifact")
 def retrieve_context(query: str, vector_db_path: str, relational_db_path: str) -> tuple[str, list]:
@@ -72,7 +84,7 @@ def retrieve_context(query: str, vector_db_path: str, relational_db_path: str) -
 def search_web(search_terms: str):
     """ Searches the web for additional information """
     # Search query
-    structured_llm = gemini.with_structured_output(SearchQuery)
+    structured_llm = summarizer.with_structured_output(SearchQuery)
     search_query = structured_llm.invoke([search_terms])
     
     # Search
@@ -89,7 +101,91 @@ def search_web(search_terms: str):
     )
     return formatted_search_docs
 
-TOOLS = [retrieve_context, search_web]
+@tool(response_format="content")
+def search_db(query: str, relational_db_path: str):
+    """Searches the relational database to get extra information for the user.
+    
+    Args:
+        query (str): the query to run in the database
+        relational_db_path (str): the path to the relational database
+    """
+    try:
+        db = get_db(relational_db_path)
+        toolkit = SQLDatabaseToolkit(db=db, llm=summarizer)
+        tools = toolkit.get_tools()
+        tools_by_name = {tool.name : tool for tool in tools}
+
+        check_query_system_prompt = """
+            You are a SQL expert with a strong attention to detail.
+            Double check the {dialect} query for common mistakes, including:
+            - Using NOT IN with NULL values
+            - Using UNION when UNION ALL should have been used
+            - Using BETWEEN for exclusive ranges
+            - Data type mismatch in predicates
+            - Properly quoting identifiers
+            - Using the correct number of arguments for functions
+            - Casting to the correct data type
+            - Using the proper columns for joins
+
+            If there are any of the above mistakes, rewrite the query. If there are no mistakes,
+            just reproduce the original query.
+
+            The database shema is:
+            {schema}
+            """.format(dialect=db.dialect, schema=db.get_table_info())
+
+        system_message = {
+            "role": "system",
+            "content": check_query_system_prompt
+        }
+
+        t1 = tools_by_name["sql_db_query_checker"]
+        query_checker = summarizer.bind_tools([t1])
+        
+        response = query_checker.invoke([system_message, query])
+
+        generate_query_system_prompt = """
+            You are an agent designed to interact with a SQL database.
+            Given an input question, create a syntactically correct {dialect} query to run,
+            then look at the results of the query and return the answer. Unless the user
+            specifies a specific number of examples they wish to obtain, always limit your
+            query to at most {top_k} results.
+
+            You can order the results by a relevant column to return the most interesting
+            examples in the database. Never query for all the columns from a specific table,
+            only ask for the relevant columns given the question.
+
+            DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
+        """.format(
+            dialect=db.dialect,
+            top_k=5,
+        )
+
+        system_message = {
+            "role": "system",
+            "content": generate_query_system_prompt
+        }
+
+        t2 = tools_by_name["sql_db_query"]
+        query_runner = summarizer.bind_tools([t2])
+
+        response = query_runner.invoke([system_message, response])
+
+        # If the LLM made a tool call, execute it
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            tool_call = response.tool_calls[0]
+            result = t2.invoke(tool_call['args'])
+            return str(result) if result else "No results found"
+        elif hasattr(response, 'content'):
+            return response.content
+        else:
+            return str(response)
+    except Exception as e:
+        return f"Error querying database: {str(e)}"
+
+    return response.content
+
+TOOLS = [retrieve_context, search_web, search_db]
 TOOLS_BY_NAME = {tool.name : tool for tool in TOOLS}
 
 model_with_tools = gemini.bind_tools(TOOLS)
@@ -135,6 +231,9 @@ def tool_node(state: LocalRagState):
         if tool_call['name'] == "retrieve_context":
             tool_call["args"]["vector_db_path"] = state["vector_db_path"]
             tool_call["args"]["relational_db_path"] = state["relational_db_path"]
+        elif tool_call['name'] == "search_db":
+            tool_call["args"]["relational_db_path"] = state["relational_db_path"]
+
         tool = TOOLS_BY_NAME[tool_call["name"]]
         observation = tool.invoke(tool_call["args"])
         
