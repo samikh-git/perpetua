@@ -63,6 +63,11 @@ The agent should connect to the vector store in the .rag folder.
 We will use typer with rich print to design the CLI functionality.
 
 
-## Questions: 
+## Questions
 
 1 - How to make sure that the agent connects to one vector store? 
+
+Resolved: use state to keep track of the paths to the different databases.
+
+2 - How to make sure that files are removed from vector store when a file is deleted? 
+
