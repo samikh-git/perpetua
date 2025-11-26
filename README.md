@@ -9,7 +9,7 @@ This tool is based in the command line and is supposed to be used similarly to g
 * `database.db`: a sqlite database to keep track of tracked files and for graph state for the agent
 * `milvus.db`: a Milvus Lite vector store for the RAG operations
 * `repo.txt`: a text file that keeps track of the repo structure for the agent to understand the structure of the project. 
-* `threads.txt`: a text file that keeps track of the thread id for the agent.
+* `threads.txt`: a text file that keeps track of the thread id for the agent. Currently, only 1 thread is ever tracked per project. I will create a command that allows the user to create a new thread.
 * `staging`: the staging directory
 
 The principal commands of this project are: 
@@ -19,10 +19,30 @@ The principal commands of this project are:
 * `localrag rm file/to/path`: removes a file from the staging area
 * `localrag commit`: vectorizes staged file
 * `localrag ask`: prompts the agent
+* `localrag reset`: clears the staging area. With --hard, it reinitializes the project
+* `localrag ls`: shows all files currently being tracked by the project
+* `localrag diff`: shows the different between the staged files nad currently tracked files
+* `localrag search "query"`: searches the vector store directly and returns the 2 closest matches. Good for a sanity check before asking the LLM.
 
 The CLI functionality was implemented using Typer. This is a very straightforward API to use to create a CLI. I would definitely recommend it. The agent was orchestrated using langgraph with langchain. The vector store is Milvus Lite and search is provided through Tavily. The relational database is Sqlite. The package is built using Poetry.
 
 The requirements can be installed by running `pip install -r requirements.txt`.
+
+You should have a `.env` file with the following information: 
+
+```bash
+LANGSMITH_TRACING=
+LANGSMITH_API_KEY=
+
+GOOGLE_API_KEY=
+
+TAVILY_API_KEY=
+
+# Optional: For evaluation and tracing
+LANGSMITH_API_KEY=
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT=localrag
+```
 
 This directory is sturctured in two subdirectory: 
 
@@ -43,6 +63,6 @@ This file contains the logic for the agent.
 
 This file contains a class that is used to abstract for adding files to the vector store and relational database.
 
+This is a very small app and is not very complicated. Please feel free to modify it rather extensively as it is not that hard to restore.
 
-This is a very small app and is not very complicated. Please feel free to modify it rather extensively as it is not that hard to restore. 
-
+Please read the [README.md](localrag/README.md) for the package for more information about the commands and the agent's tooling.

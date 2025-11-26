@@ -183,8 +183,6 @@ def search_db(query: str, relational_db_path: str):
     except Exception as e:
         return f"Error querying database: {str(e)}"
 
-    return response.content
-
 TOOLS = [retrieve_context, search_web, search_db]
 TOOLS_BY_NAME = {tool.name : tool for tool in TOOLS}
 

@@ -1,6 +1,6 @@
 [project]
 name = "localrag"
-version = "0.0.0"
+version = "0.1"
 description = ""
 authors = [
     {name = "Sami Khayatei Houssaini",email = "sami_houssaini@berkeley.edu"}

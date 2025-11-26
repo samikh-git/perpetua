@@ -1,12 +1,13 @@
-# Localrag v. 0
+# Localrag v. 0.1
 
-*Tuesday, Novemebr 25, 2025*
+Wednesday, November 26, 2025
 
 Localrag is a command line tool that allows you to use an LLM to ask questions about the codebase in which you have initialized the localrag project. 
 
 ## Commands
 
-Commands for this CLI have been copied from git, so they should be fairly intuitive for anyone who has operated with git.
+Commands for this CLI have been copied from git, so they should be fairly intuitive for anyone who has operated with git. For exact documentation of the commands, 
+please check [this file](docs.md)
 
 ### Initializing the project
 ```bash
@@ -57,6 +58,44 @@ This will open up chatting service that will allow you to query the LLM about yo
 
 Currently, only Gemini is supported as the LLM. You will need to create a `.env` file with your Gemini API key in the folder for this package. Future versions will try to support more enterprise models as well as locally run models. 
 
+### Miscellaneous commands
+
+```bash
+localrag reset
+```
+
+This clears the staging area. With the `--hard` optional argument, it will reinitialize the project.
+
+```bash
+localrag ls
+```
+
+It lists all files currently being tracked by the project
+
+```bash
+localrag diff
+```
+
+It shows if there difference between staged files and their tracked versions. Ideally, more information can be provided in the future.
+
+```bash
+localrag search "query"
+```
+
+Allows the user to query the vector store directly. This should be used as a sanity check or if you want to see some source code.
+
+## Agent Tools
+
+Our agent is equipped with the following tools to answer you questions: 
+
+1. **Vector store retrieval**: this is classic RAG using a Milvus vector store contained within the `.rag` directory. Using this tool, the LLM is able to answer questions directly about your codebase. The agent is designed to privelege this tool over the others.
+2. **Web Search**: this tool is used by the LLM to search the web to answer your questions. As of now, it will answer any question by using this but it is intended to get documentation or most up-to-date information about the tools you are using.
+3. **Database search**: this tool is used by the LLM to search the relational database contianed within the `.rag` directory. It should be able to answer questions about which files are tracked.
+
+Tools in development: 
+
+* database search: a tool that allows the agent to query any database given the URI to the database. This would be helpful for users to ask questions about their databases in the project without having to query it themselves.
+* file writing: cursor capability to edit files and make appropriate changes to files. This is probably too ambitious and will take time to be implemented.
 
 ## Notes about the package
 
@@ -100,11 +139,13 @@ The optional ones are recommended if you want to evaluate/debug the agent if you
 
 ### Installation
 
+Use the wheel in dist. This is the best way to use this project. Additionally, you can download it via pip.
+
+
 ### Next steps
 
 *In order of importance*
 
-* **Optimizations**: currently, every process is very slow. I would like to be faster and more user friendly. Ideal operation speed would be git like for the initializing and adding files.
 * **Local LLMs**: I want to see if it is possible to use a locally running LLM. This would avoid having to a third-party API for the LLM calls which could become expensive very quickly. Maybe Ollama or Vllm could be good for this.
 * **Third-party APIs**: this is more of a miscelanneous category. I would like to explore better alternatives (if they exist!) for Tavily and Milvus. I will look into FAISS, Chroma for the vector stores.
 * **Adding more tools to the agent**: ideally, some cursor capabilities would be great to be able to rewrite code.
