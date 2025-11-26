@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-from numpy import append
 
 load_dotenv()
 
@@ -11,9 +10,12 @@ from langchain.messages import SystemMessage, ToolMessage, HumanMessage, RemoveM
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from langchain_tavily import TavilySearch
+
 import sqlite3
 
 from typing import Literal
+from pydantic import BaseModel, Field
 
 gemini = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -24,6 +26,11 @@ gemini = ChatGoogleGenerativeAI(
 )
 
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+
+tavily_search = TavilySearch(max_results=3)
+
+class SearchQuery(BaseModel):
+    search_query: str = Field(None, description="Search query for retrieval.")
 
 #---------# TOOLS #-------------#
 @tool(response_format="content_and_artifact")
@@ -44,7 +51,28 @@ def retrieve_context(query: str, vector_db_path: str, relational_db_path: str) -
     )
     return serialized, retrieved_docs
 
-TOOLS = [retrieve_context]
+@tool(response_format="content")
+def search_web(search_terms: str):
+    """ Searches the web for additional information """
+    # Search query
+    structured_llm = gemini.with_structured_output(SearchQuery)
+    search_query = structured_llm.invoke([search_terms])
+    
+    # Search
+    data = tavily_search.invoke({"query": search_query.search_query})
+    search_docs = data.get("results", data)
+    
+
+     # Format
+    formatted_search_docs = "\n\n---\n\n".join(
+        [
+            f'<Document href="{doc["url"]}"/>\n{doc["content"]}\n</Document>'
+            for doc in search_docs
+        ]
+    )
+    return formatted_search_docs
+
+TOOLS = [retrieve_context, search_web]
 TOOLS_BY_NAME = {tool.name : tool for tool in TOOLS}
 
 model_with_tools = gemini.bind_tools(TOOLS)
@@ -58,9 +86,10 @@ class LocalRagState(MessagesState):
     relational_db_path: str
 
 SYSTEM_PROMPT = (
-    "You have access to a tool that retrieves context from a codebase. "
-    "Don't worrya bout the paths to vector and realtional databases as these will be passed in the state directly. No need to ask the user for them. Just retrieve."
-    "Use the tool to help answer user queries."
+    "You have access to a tool that retrieves context from a codebase."
+    "Don't worry about the paths to vector and realtional databases as these will be passed in the state directly. No need to ask the user for them. Just retrieve."
+    "Use the tool to help answer user queries about the project they are working on."
+    "You have acess to the web. Please use this if the provided context is not sufficient (ie to look up documentation)"
 )
 
 
@@ -150,7 +179,7 @@ app.add_conditional_edges("llm_call",
 
 app.add_edge("tool_node", "llm_call")
 
-def invoke_agent(content: str, vector_db_path : str, relational_db_path: str, config: dict):
+def invoke_agent(content: str, vector_db_path : str, relational_db_path: str, config: dict) -> str:
     """Invoke the agent
     
     Args:
@@ -172,5 +201,9 @@ def invoke_agent(content: str, vector_db_path : str, relational_db_path: str, co
         "relational_db_path": relational_db_path},
         config
     )
-    return result['messages'][-1].content[0]['text']
-
+    content = result['messages'][-1].content
+    if isinstance(content, list):
+        if isinstance(content[0], dict):
+            return content[0]["text"]
+        return content[0]
+    return content

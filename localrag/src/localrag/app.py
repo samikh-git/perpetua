@@ -2,23 +2,24 @@ import warnings
 warnings.filterwarnings("ignore", message=".*", category=UserWarning)
 
 import typer
+
 import os
 import shutil
+
+from pathlib import Path
 
 from localrag.rag.database.setup_db import DBManager
 from localrag.rag.document_processing import RAGStore
 from localrag.rag.rag import embeddings, invoke_agent
-
-from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.prompt import Prompt
 
+import re
 
 import uuid
-
 
 console = Console()
 
@@ -45,13 +46,11 @@ def init():
                 embeddings=embeddings, 
                 sql_URI=str(current_directory / ".rag/database.db")
             )
-            with open(".rag/dir.txt", 'x') as f:
-                f.write(os.getcwd())
 
             with open(".rag/threads.txt", "x") as f:
                 f.write(str(uuid.uuid4()))
 
-            repo_structure_doc_path = create_repo_structure_doc()
+            repo_structure_doc_path = create_repo_structure_doc(os.getcwd())
             rag.add_documents(repo_structure_doc_path)
         console.print("[green]Created .rag directory. Your local rag project has been initialized!")
     except FileExistsError as e:
@@ -65,7 +64,13 @@ def add(path: str):
     try:
         assert check_initialization(), "This is not a localrag project! Please initialize this repo."
         rag_directory = find_rag_directory(os.getcwd())
-        shutil.copy2(path, rag_directory + "/.rag/staging/" + path.split("/")[-1])
+        if os.path.isdir(path):
+            for root, dir, files in os.walk(path):
+                if not (re.search(r"[/\\]\.git[\\/]*", root) or re.search(r"[/\\]\.rag[\\/]*", root)):
+                    for file in files:
+                        shutil.copy2(root + "/" + file, rag_directory + "/.rag/staging/" + file.split("/")[-1])
+        else:
+            shutil.copy2(path, rag_directory + "/.rag/staging/" + path.split("/")[-1])
     except AssertionError as e:
         raise e   
 
@@ -139,7 +144,7 @@ def find_rag_directory(current_dir: str) -> str:
         current_dir = "/".join(current_dir.split("/")[:-1])
     return ""
 
-def create_repo_structure_doc() -> str:
+def create_repo_structure_doc(dir) -> str:
     """ Creates a .txt file in the .rag directory that keeps track of the repo structure.
     
     Returns: 
@@ -151,14 +156,11 @@ def create_repo_structure_doc() -> str:
     """
 
     rag_dir = find_rag_directory(os.getcwd()) + "/.rag"
-    
-    with open(rag_dir+"/dir.txt", "r") as f:
-        dir = f.readline()
 
     structure = " Structure of the repo. Please use this to understand the codebase for this project! \n"
 
     for root, dir, files in os.walk(dir):
-        if root.split("/")[-1] != ".git":
+        if not (re.search(r"[/\\]\.git[\\/]*", root) or re.search(r"[/\\]\.rag[\\/]*", root)):
             structure += "Path to root: " + root + " Directories in this directory: " + str(dir) + " Files in this directory: " + str(files) + "\n"
 
     file_path = rag_dir+"/repo.txt"
