@@ -1,11 +1,17 @@
 #Document processing for text-based files, main interface for documents
 from langchain_core.documents import Document
 
+from ..utils import load_env
+
+load_env()
+
 from langchain_community.document_loaders.generic import GenericLoader
 from langchain_community.document_loaders.parsers import LanguageParser
 from langchain_community.document_loaders import TextLoader
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from pathlib import Path
 import hashlib
@@ -44,7 +50,7 @@ class RAGStore:
 
     _instances = {}
 
-    def __new__(cls, vs_URI, embeddings, sql_URI):
+    def __new__(cls, vs_URI, sql_URI):
         cache_key = (vs_URI, sql_URI)
         if cache_key not in cls._instances:
             instance = super().__new__(cls)
@@ -52,10 +58,11 @@ class RAGStore:
             instance._initialized = False
         return cls._instances[cache_key]
 
-    def __init__(self, vs_URI, embeddings, sql_URI):
+    def __init__(self, vs_URI, sql_URI):
         if self._initialized:
             return
-        self.vector_store = Milvus(
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+        self.vector_store: Milvus = Milvus(
             embedding_function=embeddings,
             connection_args={"uri": vs_URI},
             index_params= {"index_type": "IVF_FLAT", "metric_type": "L2"},
@@ -163,18 +170,23 @@ class RAGStore:
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter.from_language(
                 language=lang,
-                chunk_size=1000,
+                chunk_size=1500,
                 chunk_overlap=200,
                 add_start_index=True,
             )
+            content_type = "code"
+            # Extract language name from enum - use value if available, otherwise use lowercase name
+            language_name = lang.value if hasattr(lang, 'value') else lang.name.lower()
         elif file_path.suffix in TEXT_EXTENSIONS:
             loader = TextLoader(str(file_path))
             docs = loader.load()
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
+                chunk_size=1500,
                 chunk_overlap=200,
                 add_start_index=True,
             )
+            content_type = "text"
+            language_name = "text"
         else:
             raise ValueError(f"Unsupported file extension: {file_path.suffix}")
 
@@ -183,12 +195,14 @@ class RAGStore:
             console.print(f"\n[italic]Split {str(file_path)} into {len(all_splits)} sub_documents")
         
         uuids = [str(uuid.uuid4()) for _ in range(len(all_splits))]
-
+        
         for chunk, ids in zip(all_splits, uuids):
             chunk.metadata["uuid"] = ids
             chunk.metadata["source"] = str(file_path)
             chunk.metadata["hash"] = file_hash
             chunk.metadata["indexed_at"] = datetime.now().isoformat()
+            chunk.metadata["content_type"] = content_type
+            chunk.metadata["language"] = language_name
         
         return all_splits, uuids
         

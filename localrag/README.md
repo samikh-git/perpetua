@@ -1,6 +1,6 @@
-# Localrag v. 0.1
+# Localrag v. 0.1.0
 
-Wednesday, November 26, 2025
+Friday, November 28, 2025
 
 Localrag is a command line tool that allows you to use an LLM to ask questions about the codebase in which you have initialized the localrag project. 
 
@@ -8,6 +8,16 @@ Localrag is a command line tool that allows you to use an LLM to ask questions a
 
 Commands for this CLI have been copied from git, so they should be fairly intuitive for anyone who has operated with git. For exact documentation of the commands, 
 please check [this file](docs.md)
+
+### Configuring the package for your personal use.
+
+```bash
+localrag config
+```
+
+This will allow you to set up your environment for the project. Make sure to run this before running any other command as they will not work.
+
+You will be prompted for some API keys or names of the local models you want to use for this package.
 
 ### Initializing the project
 ```bash
@@ -90,7 +100,7 @@ Our agent is equipped with the following tools to answer you questions:
 
 1. **Vector store retrieval**: this is classic RAG using a Milvus vector store contained within the `.rag` directory. Using this tool, the LLM is able to answer questions directly about your codebase. The agent is designed to privelege this tool over the others.
 2. **Web Search**: this tool is used by the LLM to search the web to answer your questions. As of now, it will answer any question by using this but it is intended to get documentation or most up-to-date information about the tools you are using.
-3. **Database search**: this tool is used by the LLM to search the relational database contianed within the `.rag` directory. It should be able to answer questions about which files are tracked.
+3. **Knowledge Graph Search**: this tool allows the agent to create create a graph with the codebases' structure. This should allow it to understand interdependencies between the different files and packages.
 
 Tools in development: 
 
@@ -122,12 +132,12 @@ langgraph>=1.0.4,<2.0.0
 You should also have a `.env` file with the following API keys: 
 
 ```bash
-LANGSMITH_TRACING=
-LANGSMITH_API_KEY=
-
 GOOGLE_API_KEY=
 
 TAVILY_API_KEY=
+
+LOCAL= #True or False if you want to use a local model
+LOCAL_MODEL= #the name of your local model you want to use. Make sure it is supported by langchain for tool calling!
 
 # Optional: For evaluation and tracing
 LANGSMITH_API_KEY=
@@ -141,12 +151,9 @@ The optional ones are recommended if you want to evaluate/debug the agent if you
 
 Use the wheel in dist. This is the best way to use this project. Additionally, you can download it via pip.
 
-
 ### Next steps
 
 *In order of importance*
 
-* **Local LLMs**: I want to see if it is possible to use a locally running LLM. This would avoid having to a third-party API for the LLM calls which could become expensive very quickly. Maybe Ollama or Vllm could be good for this.
-* **Third-party APIs**: this is more of a miscelanneous category. I would like to explore better alternatives (if they exist!) for Tavily and Milvus. I will look into FAISS, Chroma for the vector stores.
+* **Explore Neo4J Graph RAG**: maybe a graph is better suited for this project... Will look into this soon for next versions.
 * **Adding more tools to the agent**: ideally, some cursor capabilities would be great to be able to rewrite code.
-

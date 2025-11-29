@@ -8,12 +8,13 @@ This tool is based in the command line and is supposed to be used similarly to g
 
 * `database.db`: a sqlite database to keep track of tracked files and for graph state for the agent
 * `milvus.db`: a Milvus Lite vector store for the RAG operations
-* `repo.txt`: a text file that keeps track of the repo structure for the agent to understand the structure of the project. 
+* `repo-graph-lock.json`: a JSON file that represents the codebase as a graph.
 * `threads.txt`: a text file that keeps track of the thread id for the agent. Currently, only 1 thread is ever tracked per project. I will create a command that allows the user to create a new thread.
 * `staging`: the staging directory
 
 The principal commands of this project are: 
 
+* `localrag config`: configures the package. Sets up the environment the package uses.
 * `localrag init`: intializes a localrag project. Creates the .rag directory
 * `localrag add file/to/path`: adds a file/directory to the staging area
 * `localrag rm file/to/path`: removes a file from the staging area
@@ -28,12 +29,9 @@ The CLI functionality was implemented using Typer. This is a very straightforwar
 
 The requirements can be installed by running `pip install -r requirements.txt`.
 
-You should have a `.env` file with the following information: 
+You should have a `.env` file with the following information in the localrag directory in your home directory.  
 
 ```bash
-LANGSMITH_TRACING=
-LANGSMITH_API_KEY=
-
 GOOGLE_API_KEY=
 
 TAVILY_API_KEY=
@@ -55,11 +53,11 @@ In localrag, you will find the files for the project. Some highlights:
 
 This file contains the logic for the CLI.
 
-**rag/rag.py:**
+**agent/agent.py:**
 
 This file contains the logic for the agent.
 
-**rag/document_processing.py:**
+**agent/document_processing.py:**
 
 This file contains a class that is used to abstract for adding files to the vector store and relational database.
 
